@@ -16,7 +16,7 @@ import type { AuthContext, Identity } from '../../auth/context.js';
 import type { Db, Tx } from '../../lib/db.js';
 import { AppError, badRequest, forbidden, notFound, unavailable } from '../../lib/errors.js';
 import type { Logger } from '../../lib/logger.js';
-import { positiveAmount, toRupeesNumber, toRupeesString } from '../../lib/money.js';
+import { positiveAmount, rupeesForColumn, toRupeesNumber, toRupeesString } from '../../lib/money.js';
 import { randomDigits } from '../../lib/crypto.js';
 import type { SchemaCache } from '../../compat/postgrest/schema-cache.js';
 import type { Razorpay, RazorpayPayment } from '../../vendors/razorpay.js';
@@ -79,7 +79,12 @@ export class Payments {
     this.registerPurpose({
       names: ['wallet_deposit', 'deposit', 'wallet'],
       serviceType: 'deposit',
-      price: async ({ body }) => positiveAmount(body.amount, { minRupees: 100, maxRupees: MAX_DEPOSIT_RUPEES }),
+      price: async ({ body }) => {
+        const paise = positiveAmount(body.amount, { minRupees: 100, maxRupees: MAX_DEPOSIT_RUPEES });
+        // Wallet balances are whole rupees in the production schema.
+        if (paise % 100 !== 0) throw badRequest('Deposits must be in whole rupees');
+        return paise;
+      },
       fulfil: async ({ tx, order, paymentId, ledger }) => {
         const r = await ledger.apply(tx, 'user_wallet', {
           accountId: order.profile_id!,
@@ -306,7 +311,7 @@ export class Payments {
     const row: Record<string, unknown> = {
       wishme_payment_id: wishmePaymentId,
       user_id: o.profile_id,
-      amount: toRupeesString(Number(o.amount_paise)),
+      amount: rupeesForColumn(Number(o.amount_paise), table.columns.get('amount')?.type),
       payment_method: 'razorpay',
       service_type: purpose.serviceType,
       razorpay_payment_id: paymentId,

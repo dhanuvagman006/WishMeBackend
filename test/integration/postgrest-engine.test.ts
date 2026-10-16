@@ -46,7 +46,7 @@ beforeAll(async () => {
   bob = await signUp(t, 'bob@example.com', undefined, { first_name: 'Bob', phone: '9000000002' });
   aliceProfile = await profileIdOf(t, alice.user.id);
   bobProfile = await profileIdOf(t, bob.user.id);
-  await t.sql`update public.profiles set wallet_balance = 250.50, aadhaar_number = '123412341234' where id = ${aliceProfile}`;
+  await t.sql`update public.profiles set wallet_balance = 250, aadhaar_number = '123412341234' where id = ${aliceProfile}`;
   const c = await t.sql<{ id: string }[]>`insert into public.celebrities (profile_id, name, category) values (${bobProfile}, 'Bob Star', 'Singer') returning id`;
   celebId = c[0]!.id;
 });
@@ -58,7 +58,7 @@ describe('reads', () => {
   it('returns the owner every column and numbers as numbers', async () => {
     const res = await t.app.inject({ method: 'GET', url: `/rest/v1/profiles?select=id,wallet_balance,aadhaar_number&id=eq.${aliceProfile}`, headers: bearer(alice.access_token) });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual([{ id: aliceProfile, wallet_balance: 250.5, aadhaar_number: '123412341234' }]);
+    expect(res.json()).toEqual([{ id: aliceProfile, wallet_balance: 250, aadhaar_number: '123412341234' }]);
     expect(res.headers['content-range']).toBe('0-0/*');
   });
 
@@ -161,16 +161,16 @@ describe('writes', () => {
       method: 'POST',
       url: '/rest/v1/platform_settings?on_conflict=setting_key',
       headers: { ...bearer(alice.access_token), prefer: 'resolution=merge-duplicates,return=representation' },
-      payload: { setting_key: 'ugc_video_price', setting_value: { amount: 499 } },
+      payload: { setting_key: 'ugc_video_price', setting_value: '499' },
     });
     expect(first.statusCode).toBe(201);
     const second = await t.app.inject({
       method: 'POST',
       url: '/rest/v1/platform_settings?on_conflict=setting_key',
       headers: { ...bearer(alice.access_token), prefer: 'resolution=merge-duplicates,return=representation' },
-      payload: { setting_key: 'ugc_video_price', setting_value: { amount: 599 } },
+      payload: { setting_key: 'ugc_video_price', setting_value: '599' },
     });
-    expect(second.json()[0].setting_value).toEqual({ amount: 599 });
+    expect(second.json()[0].setting_value).toBe('599');
     const rows = await t.sql`select count(*)::int as n from public.platform_settings`;
     expect(rows[0]!.n).toBe(1);
   });

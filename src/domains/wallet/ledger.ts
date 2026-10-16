@@ -19,7 +19,7 @@ import type { Db, Tx } from '../../lib/db.js';
 import { AppError } from '../../lib/errors.js';
 import type { Logger } from '../../lib/logger.js';
 import { ledgerMovements } from '../../lib/metrics.js';
-import { fromRupees, toRupeesString } from '../../lib/money.js';
+import { fromRupees, rupeesForColumn, toRupeesString } from '../../lib/money.js';
 import type { SchemaCache } from '../../compat/postgrest/schema-cache.js';
 
 export type AccountKind = 'user_wallet' | 'celebrity_earnings';
@@ -86,6 +86,24 @@ const ACCOUNTS: Record<AccountKind, AccountSpec> = {
   celebrity_earnings: { table: 'celebrities', column: 'available_balance' },
 };
 
+/**
+ * Values accepted by the production CHECK constraint wallet_transactions_transaction_type_check (from the audit).
+ * Ledger kinds outside this set are recorded on the history row under the closest allowed type, and the original
+ * kind is kept in transaction_details.kind.
+ */
+export const HISTORY_TYPES = new Set([
+  'deposit', 'withdrawal', 'admin_credit', 'music_generation', 'music_download', 'greeting_card_generation',
+  'celebrity_subscription', 'ugc_video', 'image_promotion', 'booking', 'referral_commission', 'earning',
+  'favorite_subscription', 'photo_wish', 'celebrity_call', 'voice_call', 'plan_upgrade', 'service_payment', 'debit',
+]);
+
+export function historyTypeFor(kind: string, deltaPaise: number): string {
+  if (HISTORY_TYPES.has(kind)) return kind;
+  if (kind === 'plan_purchase') return 'plan_upgrade';
+  if (kind === 'voice_call_wish') return 'voice_call';
+  return deltaPaise > 0 ? 'admin_credit' : 'debit';
+}
+
 export class InsufficientFunds extends AppError {
   constructor(balancePaise: number, neededPaise: number) {
     super(400, 'insufficient_balance', 'Insufficient wallet balance', {
@@ -123,6 +141,9 @@ export class Ledger {
   async apply(tx: Tx, kind: AccountKind, m: Movement): Promise<MovementResult> {
     if (!Number.isSafeInteger(m.deltaPaise)) throw new AppError(400, 'invalid_amount', 'Invalid amount');
     const spec = ACCOUNTS[kind];
+    const balanceType = this.schema.table(spec.table)?.columns.get(spec.column)?.type;
+    // Validates whole rupees up front for integer balance columns (throws before anything is written).
+    rupeesForColumn(m.deltaPaise, balanceType);
 
     // Serialise on the account first, then check idempotency, so a duplicate racing the original waits and then sees it.
     const before = await this.lockedBalance(tx, spec, m.accountId);
@@ -147,7 +168,7 @@ export class Ledger {
     if (correction !== 0) {
       await tx.unsafe(
         `update public.${spec.table} set ${spec.column} = ${spec.column} + $1::numeric where id = $2`,
-        [toRupeesString(correction), m.accountId],
+        [rupeesForColumn(correction, balanceType), m.accountId],
       );
       if (afterTrigger !== before) {
         // A trigger moved the balance, but not by the amount we intended: corrected, and worth knowing.
@@ -181,12 +202,12 @@ export class Ledger {
     if (!table) return null;
     const row: Record<string, unknown> = {
       user_id: m.accountId,
-      transaction_type: m.kind,
-      amount: toRupeesString(m.displayPaise ?? Math.abs(m.deltaPaise)),
+      transaction_type: historyTypeFor(m.kind, m.deltaPaise),
+      amount: rupeesForColumn(m.displayPaise ?? Math.abs(m.deltaPaise), table.columns.get('amount')?.type),
       status: 'completed',
       payment_method: m.paymentMethod ?? 'wallet',
       description: m.description ?? null,
-      transaction_details: m.details ?? {},
+      transaction_details: { ...(m.details ?? {}), ...(historyTypeFor(m.kind, m.deltaPaise) !== m.kind ? { kind: m.kind } : {}) },
       reference_id: m.reference?.id ?? null,
       ...(m.extraColumns ?? {}),
     };

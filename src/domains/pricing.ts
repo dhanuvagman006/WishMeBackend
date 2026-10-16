@@ -12,7 +12,20 @@ import { fromRupees } from '../lib/money.js';
  */
 export async function settingValue(q: Db | Tx, key: string): Promise<unknown> {
   const rows = await q<{ setting_value: unknown }[]>`select setting_value from public.platform_settings where setting_key = ${key} limit 1`;
-  return rows[0]?.setting_value ?? null;
+  const v = rows[0]?.setting_value ?? null;
+  // In production setting_value is TEXT ("499" or a JSON document such as {"amount":499}); tolerate both.
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (t.startsWith('{') || t.startsWith('[')) {
+      try {
+        return JSON.parse(t) as unknown;
+      } catch {
+        return t;
+      }
+    }
+    return t;
+  }
+  return v;
 }
 
 /** A price setting in paise; throws 503 when the setting is missing so nothing is ever sold for free by accident. */

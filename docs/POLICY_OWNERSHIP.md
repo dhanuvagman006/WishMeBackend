@@ -45,5 +45,5 @@ Every `/rest/v1` table has exactly one policy, every RPC and edge function exact
 | --- | --- |
 | `maintenance.ts`, `payments.ts` | core |
 | `reminders.ts`, `calls.ts` | voice and hub |
-| `content.ts` | content and audio |
-| `notifications.ts` | messaging |
+| `content.ts` | content (HeyGen videos, cards); audio polls its vendors on demand and has no queue |
+| `notifications.ts` | messaging (email, WhatsApp, Expo push for everyone) |

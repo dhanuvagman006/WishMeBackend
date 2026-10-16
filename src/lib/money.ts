@@ -24,6 +24,19 @@ export function toRupeesString(paise: number): string {
   return `${neg ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
 
+/**
+ * Value for a rupee column. The production schema stores money as INTEGER rupees (wallet_balance, amount, price,
+ * available_balance), so a fractional amount there is refused rather than silently rounded.
+ */
+export function rupeesForColumn(paise: number, columnType: string | undefined): string {
+  const integerColumn = columnType === 'integer' || columnType === 'bigint' || columnType === 'smallint';
+  if (integerColumn) {
+    if (paise % 100 !== 0) throw new AppError(400, 'invalid_amount', 'Amounts must be in whole rupees');
+    return String(paise / 100);
+  }
+  return toRupeesString(paise);
+}
+
 /** Rupees as a JS number for JSON responses that the app expects numeric (balances). */
 export function toRupeesNumber(paise: number): number {
   return Number(toRupeesString(paise));
