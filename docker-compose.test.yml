@@ -1,0 +1,28 @@
+# Throwaway Postgres and Redis for the integration tests. Ports are uncommon on purpose so they do not clash with
+# anything else on a developer machine.
+#   docker compose -f docker-compose.test.yml up -d
+#   pnpm test
+name: wishme-backend-test
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: wishme_test
+    ports: ['127.0.0.1:55432:5432']
+    tmpfs: ['/var/lib/postgresql/data']
+    command: ['postgres', '-c', 'fsync=off', '-c', 'synchronous_commit=off', '-c', 'full_page_writes=off']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d wishme_test']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    ports: ['127.0.0.1:56379:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 30

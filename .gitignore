@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+!deploy/.env.example
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+# local secrets and dumps must never be committed
+*.pem
+*.key
+*.dump
+*.sql.gz
+backups/
