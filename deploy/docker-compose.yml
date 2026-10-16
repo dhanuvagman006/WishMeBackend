@@ -1,0 +1,108 @@
+# Production stack on one VPS. Lives at /opt/wishme with .env next to it (see .env.example).
+#   docker compose run --rm migrate          # apply migrations
+#   docker compose up -d                      # start / update
+# Postgres and Redis listen only on the internal network. Only Caddy publishes ports.
+name: wishme
+
+x-app: &app
+  image: ${IMAGE:-ghcr.io/dhanuvagman006/wishmebackend}:${TAG:-latest}
+  env_file: .env
+  restart: unless-stopped
+  networks: [internal]
+  logging:
+    driver: local
+    options: { max-size: '20m', max-file: '10' }
+  depends_on:
+    redis: { condition: service_healthy }
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports: ['80:80', '443:443', '443:443/udp']
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [internal]
+    depends_on: [api]
+
+  api:
+    <<: *app
+    command: ['node', 'dist/server.js']
+    deploy:
+      replicas: ${API_REPLICAS:-2}
+      resources:
+        limits: { memory: 768M }
+    stop_grace_period: 40s
+
+  worker:
+    <<: *app
+    command: ['node', 'dist/worker.js']
+    deploy:
+      replicas: 1
+      resources:
+        limits: { memory: 512M }
+    stop_grace_period: 60s
+    healthcheck:
+      disable: true
+
+  migrate:
+    <<: *app
+    command: ['node', 'dist/migrate.js']
+    restart: 'no'
+    profiles: [tools]
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction', '--save', '60', '1000']
+    volumes: [redis_data:/data]
+    networks: [internal]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Only used after cutover (DB_MODE=standalone). Before that DATABASE_URL points at Supabase.
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    profiles: [standalone]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wishme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-wishme}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-1GB}
+      - -c
+      - effective_cache_size=${PG_EFFECTIVE_CACHE:-3GB}
+      - -c
+      - max_connections=200
+      - -c
+      - wal_level=replica
+      - -c
+      - log_min_duration_statement=500
+    shm_size: 256mb
+    volumes: [pg_data:/var/lib/postgresql/data, ./backups:/backups]
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-wishme} -d ${POSTGRES_DB:-wishme}']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+networks:
+  internal: {}
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}
+  redis_data: {}
+  pg_data: {}

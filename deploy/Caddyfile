@@ -1,0 +1,49 @@
+# TLS termination and load balancing for the API replicas. Certificates are issued and renewed automatically.
+{
+	email {$ACME_EMAIL}
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	# Uploads stream through to the API, which enforces per-bucket limits; this is the outer bound.
+	request_body {
+		max_size 110MB
+	}
+
+	# Prometheus metrics are for the internal network only.
+	@metrics path /metrics
+	respond @metrics 404
+
+	reverse_proxy {
+		# Every running `api` replica, discovered through Docker's DNS.
+		dynamic a api 3000 {
+			refresh 5s
+		}
+		lb_policy least_conn
+		lb_retries 2
+		lb_try_duration 10s
+		health_uri /api/readyz
+		health_interval 5s
+		health_timeout 3s
+		health_status 200
+		fail_duration 30s
+		# Keep WebSockets (Realtime, voice relay) open across Caddy reloads.
+		stream_close_delay 5m
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
