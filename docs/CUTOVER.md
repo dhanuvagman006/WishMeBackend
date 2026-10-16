@@ -11,7 +11,12 @@ two weeks without incident.
 2. Raise `APP_MIN_VERSION` to a build that points at this server, so no installed app still talks to Supabase.
 3. Copy Supabase Storage buckets to B2 (`rclone sync supabase:<bucket> b2:<bucket>/storage/<bucket>`), and prepare
    the URL rewrite for columns that store `…supabase.co/storage/v1/object/public/…`.
-4. Rehearse twice on a staging VPS with fresh dumps. Record the timings.
+4. Replace what Supabase-only extensions do today. The audit shows `pg_net` triggers (`notify_wallet_topup`,
+   `notify_referral_earning`, booking status notifications) calling `send-wishme-notification`, and `pg_cron` jobs
+   (see the export's `data-cron.sql`). On vanilla Postgres those calls fail (the triggers swallow the error), so the
+   same notifications must be produced by this server's `notifications` queue and the cron jobs by repeatable jobs
+   before cutover. Drop or rewrite those triggers in the restored database.
+5. Rehearse twice on a staging VPS with fresh dumps. Record the timings.
 
 ## During (target: 30 minutes)
 

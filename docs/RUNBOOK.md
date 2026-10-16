@@ -47,6 +47,19 @@ Change `ROUTE_MODES` / `COMPAT_DEFAULT_MODE` in `.env`, then `docker compose up 
 - **Monthly restore drill**: `scripts/restore.sh <name> <identity file>` into `wishme_restore_drill`; record the time.
 - After cutover, add continuous WAL archiving (pgBackRest or wal-g to a separate B2 bucket) for point-in-time recovery.
 
+## Validating against the real schema
+
+`test/real-schema/` runs the server in shared mode against a structure-only copy of the production database, so
+policies, sign-up and the ledger are checked against the real tables, triggers and constraints. The dump is never
+committed (the export also contains personal data). To refresh the copy:
+
+1. Export with `scripts/supabase-audit` in the app repository (needs the owner's Supabase login).
+2. Into an empty database load `schema-auth-storage.sql`, then `schema.sql` (errors about `pg_cron`, `pg_net`,
+   `supabase_vault`, the `supabase_realtime` publication and `MAINTAIN` grants are expected on vanilla Postgres), then
+   re-create `on_auth_user_created` on `auth.users` (it fails in the first file because `public.handle_new_user` does
+   not exist yet). Never load the `data*.sql` files for this.
+3. `REAL_SCHEMA_DB=postgres://…/that_db pnpm vitest run test/real-schema`.
+
 ## Incidents
 
 | Symptom | First checks |
