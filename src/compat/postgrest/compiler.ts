@@ -118,16 +118,21 @@ function visibility(env: CompileEnv, info: TableInfo, policy: TablePolicy, alias
   const reveals = (grantCols: Set<string> | null, name: string) => !hidden.has(name) && (grantCols === null || grantCols.has(name));
   const readable = [...info.columns.keys()].filter((n) => compiled.some((g) => reveals(g.cols, n)));
   const rows = or(compiled.map((g) => g.rows));
+  const computed = policy.computed ?? {};
+  const masked = (name: string): Sql => {
+    column(info, name);
+    const covering = compiled.filter((g) => reveals(g.cols, name));
+    if (covering.length === 0) return sql`null`;
+    // Revealed by every grant: no mask needed.
+    if (covering.length === compiled.length) return ident(alias, name);
+    return sql`case when ${or(covering.map((g) => g.rows))} then ${ident(alias, name)} end`;
+  };
   return {
     rows,
-    readable,
+    readable: [...readable, ...Object.keys(computed).filter((k) => !info.columns.has(k))],
     expr(name) {
-      column(info, name);
-      const covering = compiled.filter((g) => reveals(g.cols, name));
-      if (covering.length === 0) return sql`null`;
-      // Revealed by every grant: no mask needed.
-      if (covering.length === compiled.length) return ident(alias, name);
-      return sql`case when ${or(covering.map((g) => g.rows))} then ${ident(alias, name)} end`;
+      const virtual = computed[name];
+      return virtual && !info.columns.has(name) ? virtual(masked, pc) : masked(name);
     },
   };
 }
@@ -326,7 +331,13 @@ function returning(env: CompileEnv, info: TableInfo, policy: TablePolicy, cteNam
 }
 
 /** Applies a write rule to client rows: allowed columns, forced values, checks. Mutates nothing the caller owns. */
-export async function prepareRows(info: TableInfo, rule: WriteRule, rows: readonly unknown[], pc: PolicyCtx): Promise<Record<string, unknown>[]> {
+export async function prepareRows(
+  info: TableInfo,
+  rule: WriteRule,
+  rows: readonly unknown[],
+  pc: PolicyCtx,
+  deps: import('../../deps.js').Deps,
+): Promise<Record<string, unknown>[]> {
   const allowed = new Set(rule.columns);
   const forced = rule.set ? rule.set(pc) : {};
   const out: Record<string, unknown>[] = [];
@@ -347,7 +358,7 @@ export async function prepareRows(info: TableInfo, rule: WriteRule, rows: readon
       column(info, k);
       row[k] = v;
     }
-    if (rule.check) await rule.check(row, pc);
+    if (rule.check) await rule.check(row, pc, deps);
     out.push(row);
   }
   return out;
@@ -447,6 +458,9 @@ export function validatePolicies(schema: SchemaCache, policies: PolicyRegistry):
     check(p.update?.columns, 'update.columns');
     for (const u of p.upsertOn ?? []) check(u, 'upsertOn');
     check(p.realtime?.filterColumns, 'realtime.filterColumns');
+    for (const k of Object.keys(p.computed ?? {})) {
+      if (info.columns.has(k)) problems.push(`${p.table}: computed column "${k}" shadows a real column`);
+    }
   }
   return problems;
 }

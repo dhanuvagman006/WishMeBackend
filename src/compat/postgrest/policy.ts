@@ -40,7 +40,7 @@ export interface WriteRule {
   /** Values the server forces on every written row (owner ids, status). They override client values. */
   set?: (c: PolicyCtx) => Record<string, unknown>;
   /** Per-row validation or normalisation; throw an AppError to reject. May mutate the row. */
-  check?: (row: Record<string, unknown>, c: PolicyCtx) => void | Promise<void>;
+  check?: (row: Record<string, unknown>, c: PolicyCtx, deps: import('../../deps.js').Deps) => void | Promise<void>;
   /** Max rows per insert request (default 50). */
   maxRows?: number;
 }
@@ -77,7 +77,13 @@ export interface RealtimeRule {
   /** Columns a subscription may filter on (must be among the trigger's columns in migrations/0003). */
   filterColumns: readonly string[];
   /** May this caller subscribe to rows where `column = value`? */
-  authorize: (auth: AuthContext, identity: Identity, column: string, value: string) => boolean | Promise<boolean>;
+  authorize: (
+    auth: AuthContext,
+    identity: Identity,
+    column: string,
+    value: string,
+    deps: import('../../deps.js').Deps,
+  ) => boolean | Promise<boolean>;
 }
 
 export interface TablePolicy {
@@ -92,6 +98,13 @@ export interface TablePolicy {
   upsertOn?: readonly (readonly string[])[];
   custom?: { read?: CustomHandler; insert?: CustomHandler; update?: CustomHandler; delete?: CustomHandler };
   realtime?: RealtimeRule;
+  /**
+   * Read-only virtual columns the app selects under names the table does not have (for example celebrity_media
+   * "media_url" served from file_url). Included in `*` and selectable by name; not filterable, sortable or writable.
+   * Build the expression only from `column(name)`: it returns the real column as the caller's read grants mask it
+   * (null where hidden), so an alias can never reveal more than the column it stands for.
+   */
+  computed?: Record<string, (column: (name: string) => Sql, c: PolicyCtx) => Sql>;
   /** Public, cacheable reads (seconds). Only honoured for anonymous callers. */
   anonCacheSec?: number;
 }

@@ -128,7 +128,7 @@ export function registerPostgrest(app: FastifyInstance, deps: Deps): void {
       const rows = Array.isArray(body) ? body : [body];
       const max = p.insert.maxRows ?? 50;
       if (rows.length > max) throw pgrstError(400, 'PGRST102', `At most ${max} rows per request`);
-      const prepared = await prepareRows(info, p.insert, rows, pc);
+      const prepared = await prepareRows(info, p.insert, rows, pc, deps);
       const compiled = compileInsert(env, table, prepared, {
         onConflict: parseOnConflict(params.get('on_conflict')),
         merge: prefer.mergeDuplicates,
@@ -144,7 +144,7 @@ export function registerPostgrest(app: FastifyInstance, deps: Deps): void {
       if (!p.update) throw new AppError(403, '42501', `permission denied to update ${table}`);
       const body = jsonBody(req.body);
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw pgrstError(400, 'PGRST102', 'PATCH body must be a JSON object');
-      const [patch] = await prepareRows(info, p.update, [body], pc);
+      const [patch] = await prepareRows(info, p.update, [body], pc, deps);
       const read = parseRead(params);
       const compiled = compileUpdate(env, table, patch!, read.where, select);
       const res = await execute(ctx, compiled);

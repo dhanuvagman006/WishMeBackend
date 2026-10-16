@@ -58,6 +58,8 @@ export interface FunctionDef {
   websocket?: (socket: WebSocket, c: Omit<FnContext, 'body' | 'rawBody'>) => void | Promise<void>;
 }
 
+export const DEFAULT_FN_BODY_LIMIT = 1024 * 1024;
+
 export class FunctionRegistry {
   private readonly fns = new Map<string, FunctionDef>();
 
@@ -71,6 +73,13 @@ export class FunctionRegistry {
 
   get(name: string): FunctionDef | undefined {
     return this.fns.get(name);
+  }
+
+  /** Largest body any local function accepts (default 1 MB each). */
+  maxBodyLimit(): number {
+    let max = DEFAULT_FN_BODY_LIMIT;
+    for (const f of this.fns.values()) max = Math.max(max, f.bodyLimit ?? DEFAULT_FN_BODY_LIMIT);
+    return max;
   }
 
   names(): string[] {

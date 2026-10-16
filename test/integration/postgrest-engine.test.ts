@@ -22,6 +22,8 @@ const policies = [
       { name: 'owner', rows: (c) => (c.identity.profileId ? sql`${c.col('id')} = ${c.identity.profileId}` : 'none'), columns: '*' },
       { name: 'public-card', rows: (c) => (c.auth.kind === 'anon' ? 'none' : 'all'), columns: ['id', 'first_name', 'avatar_url'] },
     ],
+    // Aliases for field names the table lacks; each reads through the masked real column.
+    computed: { display_name: (column) => column('first_name'), id_card: (column) => column('aadhaar_number') },
     update: {
       rows: (c) => (c.identity.profileId ? sql`${c.col('id')} = ${c.identity.profileId}` : 'none'),
       columns: ['first_name', 'last_name', 'phone', 'address'],
@@ -52,6 +54,30 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await t.close();
+});
+
+describe('computed columns', () => {
+  it('serve an alias as the masked real column, in * and by name', async () => {
+    const own = await t.app.inject({ method: 'GET', url: `/rest/v1/profiles?select=display_name,id_card&id=eq.${aliceProfile}`, headers: bearer(alice.access_token) });
+    expect(own.json()).toEqual([{ display_name: 'Alice', id_card: '123412341234' }]);
+    const other = await t.app.inject({ method: 'GET', url: `/rest/v1/profiles?select=*&id=eq.${aliceProfile}`, headers: bearer(bob.access_token) });
+    const row = (other.json() as Record<string, unknown>[])[0]!;
+    expect(row.display_name).toBe('Alice');
+    expect(row).toHaveProperty('id_card', null);
+  });
+
+  it('cannot be filtered or ordered on, so a hidden value cannot be probed', async () => {
+    const probe = await t.app.inject({ method: 'GET', url: '/rest/v1/profiles?select=id&id_card=eq.123412341234', headers: bearer(bob.access_token) });
+    expect(probe.statusCode).toBe(400);
+    const order = await t.app.inject({ method: 'GET', url: '/rest/v1/profiles?select=id&order=id_card', headers: bearer(bob.access_token) });
+    expect(order.statusCode).toBe(400);
+  });
+
+  it('cannot be written', async () => {
+    const res = await t.app.inject({ method: 'PATCH', url: `/rest/v1/profiles?id=eq.${aliceProfile}`, headers: bearer(alice.access_token), payload: { display_name: 'Eve' } });
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(res.statusCode).toBeLessThan(500);
+  });
 });
 
 describe('reads', () => {

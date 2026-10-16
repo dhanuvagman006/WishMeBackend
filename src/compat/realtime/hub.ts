@@ -159,7 +159,7 @@ export class RealtimeHub {
         return this.reply(client, msg, 'error', { reason: `Unable to subscribe to changes with given parameters (${table})` });
       }
       const [, column, value] = m as unknown as [string, string, string];
-      if (!rule.filterColumns.includes(column) || !(await rule.authorize(client.auth, identity, column, value))) {
+      if (!rule.filterColumns.includes(column) || !(await rule.authorize(client.auth, identity, column, value, this.deps))) {
         return this.reply(client, msg, 'error', { reason: 'Unauthorized' });
       }
       const sub: Subscription = { id: this.nextSubId++, topic, table, event, column, value, filter: spec.filter! };
