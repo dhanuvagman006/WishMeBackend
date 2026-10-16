@@ -161,7 +161,7 @@ export class Ledger {
          balance_after_paise, metadata, created_by)
       values (${kind}, ${m.accountId}, ${m.deltaPaise}, ${m.kind}, ${m.idempotencyKey},
               ${m.reference?.type ?? null}, ${m.reference?.id ?? null}, ${historyRowId}, ${target},
-              ${tx.json((m.details ?? {}) as never)}, ${m.createdBy})
+              ${tx.json({ ...(m.details ?? {}), ...(m.displayPaise !== undefined ? { display_paise: m.displayPaise } : {}) } as never)}, ${m.createdBy})
       returning id`;
     ledgerMovements.inc({ kind: m.kind });
     return { ledgerId: entry[0]?.id ?? '', historyRowId, balanceAfterPaise: target, alreadyApplied: false };
