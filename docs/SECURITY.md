@@ -29,8 +29,15 @@ documents, bank details, call recordings), the ability to phone people and spend
   that call (and ignores blanked private fields on save). Fix in the app: pass the user's token.
 - Aadhaar, PAN and bank numbers are stored in plain text in `profiles`, as Supabase had them. Plan: encrypt at rest
   with a key held by the API (pgcrypto or application-level), and stop collecting what the business does not need.
-- Admin tooling (approving celebrities, payouts, refunds) still lives in the Supabase dashboard; it needs an admin
-  surface on this server before cutover.
+- **Rotate the Vobiz auth token now.** The deployed `vapi-celebrity-call` edge function has Vobiz credentials hardcoded
+  in its source. This server reads them only from `VOBIZ_AUTH_ID` / `VOBIZ_AUTH_TOKEN`; the old values must be
+  treated as leaked.
+- The production `vapi-webhook` accepted any POST. Here it requires `VAPI_WEBHOOK_SECRET`.
+- The app's flight review screen sends no user token, so flight booking answers 401 until the app passes
+  `session.access_token` to `tboFareQuote` and `tboBookAndTicket` (anonymous booking would charge nobody's wallet).
+- Admin actions (payout approve/reject, celebrity applications, wallet adjustments, invariant report, audit log) exist
+  as `/api/v1/admin` endpoints with an audit trail, but there is no admin UI yet; until there is, approvals that are
+  not covered stay in the Supabase dashboard.
 - Penetration test before go-live of each money domain.
 
 ## Reporting

@@ -7,7 +7,10 @@
 }
 
 {$API_DOMAIN} {
-	encode zstd gzip
+	# WebSocket upgrades (Realtime, sarvam-voice, vobiz-stream) are proxied as-is: never compressed, and Caddy sets no
+	# idle timeout on upgraded streams, so long calls stay open. The API enforces its own session caps.
+	@compressible not header Connection *Upgrade*
+	encode @compressible zstd gzip
 
 	# Uploads stream through to the API, which enforces per-bucket limits; this is the outer bound.
 	request_body {

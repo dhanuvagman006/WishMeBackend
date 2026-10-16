@@ -66,6 +66,9 @@ export interface Purpose {
 
 const MAX_DEPOSIT_RUPEES = 100_000;
 
+/** Fulfilment keys copied onto the payment_transactions row when the column exists. */
+const RECORD_LINKS = ['wish_order_id', 'booking_id'] as const;
+
 export class Payments {
   private readonly purposes = new Map<string, Purpose>();
 
@@ -160,7 +163,10 @@ export class Payments {
     if (!auth.userId || !identity.profileId) throw forbidden('A profile is required to pay');
     if (!this.razorpay.configured) throw unavailable('Payments are not configured');
     const notes = (body.notes && typeof body.notes === 'object' ? body.notes : {}) as Record<string, unknown>;
-    const type = typeof notes.type === 'string' ? notes.type : 'wallet_deposit';
+    // The wish checkout sends no notes.type, only notes.orderId and a 'WISH-<orderId>' receipt. Without this it would be
+    // priced as a wallet deposit of the client's amount.
+    const isWish = notes.orderId !== undefined || (typeof body.receipt === 'string' && body.receipt.startsWith('WISH-'));
+    const type = typeof notes.type === 'string' ? notes.type : isWish ? 'wish_order' : 'wallet_deposit';
     const purpose = this.purposeOf(type);
     const amountPaise = await purpose.price({ auth, identity, body, notes });
     const currency = 'INR';
@@ -279,7 +285,7 @@ export class Payments {
         wishmePaymentId,
         ledger: this.ledger,
       });
-      await this.writePaymentRecord(tx, cur, purpose, paymentId, wishmePaymentId);
+      await this.writePaymentRecord(tx, cur, purpose, paymentId, wishmePaymentId, fulfilment);
       const updated = await tx<OrderRow[]>`
         update wishme.payment_orders
         set status = 'fulfilled', razorpay_payment_id = ${paymentId}, wishme_payment_id = ${wishmePaymentId},
@@ -305,7 +311,14 @@ export class Payments {
   }
 
   /** The public.payment_transactions row the app's history reads (only columns that exist are written). */
-  private async writePaymentRecord(tx: Tx, o: OrderRow, purpose: Purpose, paymentId: string, wishmePaymentId: string): Promise<void> {
+  private async writePaymentRecord(
+    tx: Tx,
+    o: OrderRow,
+    purpose: Purpose,
+    paymentId: string,
+    wishmePaymentId: string,
+    fulfilment: Record<string, unknown>,
+  ): Promise<void> {
     const table = this.schema.table('payment_transactions');
     if (!table) return;
     const row: Record<string, unknown> = {
@@ -320,6 +333,11 @@ export class Payments {
       status: 'completed',
       paid_at: new Date().toISOString(),
     };
+    // Links the app's history uses (payment_transactions.wish_order_id, booking_id), taken from what the purpose fulfilled.
+    for (const link of RECORD_LINKS) {
+      const v = fulfilment[link];
+      if (typeof v === 'string' && v) row[link] = v;
+    }
     const cols = Object.keys(row).filter((c) => table.columns.has(c));
     await tx.unsafe(
       `insert into public.payment_transactions (${cols.map((c) => `"${c}"`).join(', ')}) values (${cols.map((_, i) => `$${i + 1}`).join(', ')})`,

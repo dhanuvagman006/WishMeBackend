@@ -16,6 +16,9 @@ two weeks without incident.
    (see the export's `data-cron.sql`). On vanilla Postgres those calls fail (the triggers swallow the error), so the
    same notifications must be produced by this server's `notifications` queue and the cron jobs by repeatable jobs
    before cutover. Drop or rewrite those triggers in the restored database.
+   The `handle_auto_reply_on_message` trigger on `messages` also calls an edge function for the celebrity AI reply.
+   Once the `functions` route group is local, this server sends that reply itself, so drop the trigger (or point it
+   at this server) when switching that group, not only at cutover; with both running, fans get two replies.
 5. Rehearse twice on a staging VPS with fresh dumps. Record the timings.
 
 ## During (target: 30 minutes)
@@ -41,3 +44,6 @@ two weeks without incident.
 2. Enable WAL archiving for point-in-time recovery; run a restore drill.
 3. Watch error rates, payment reconciliation and queue depth for two weeks with Supabase kept read-only.
 4. Take a final encrypted dump of Supabase, archive it, and delete the Supabase project.
+5. Production triggers still move money outside the ledger: booking and wish-order earnings for celebrities, referral
+   and booking commissions, TDS. They keep working after the restore (plain PL/pgSQL), and the nightly invariant check
+   skips accounts they touched. Replace them with ledger movements one at a time, each with a test, then drop them.

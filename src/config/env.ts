@@ -135,9 +135,18 @@ const schema = z
     TBO_PASSWORD: z.string().optional(),
     TBO_HOTEL_USERNAME: z.string().optional(),
     TBO_HOTEL_PASSWORD: z.string().optional(),
+    /** Public IP TBO requires in every request (the VPS address). */
+    TBO_END_USER_IP: z.string().optional(),
+    SUNO_API_KEY: z.string().optional(),
+    VOBIZ_AUTH_ID: z.string().optional(),
+    VOBIZ_AUTH_TOKEN: z.string().optional(),
+    VOBIZ_PHONE_NUMBER: z.string().optional(),
     WHATSAPP_PROVIDER: z.enum(['none', 'meta']).default('none'),
     WHATSAPP_TOKEN: z.string().optional(),
     WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+    /** Approved Meta template sent after sign-up; one body parameter (the first name). */
+    WHATSAPP_WELCOME_TEMPLATE: z.string().default('wishme_welcome'),
+    WHATSAPP_WELCOME_LANGUAGE: z.string().default('en'),
     WEB_SEARCH_PROVIDER: z.enum(['none', 'gemini']).default('gemini'),
 
     // ── Operations ──────────────────────────────────────────────────────────────────────────────────────────
@@ -169,6 +178,11 @@ const schema = z
       need(e.EMAIL_PROVIDER !== 'log', 'EMAIL_PROVIDER', 'to be a real provider in production');
       need(e.DB_SSL !== 'disable' || /@(postgres|localhost|127\.0\.0\.1)[:/]/.test(e.DATABASE_URL), 'DB_SSL',
         'to be enabled when the database is not on the local Docker network');
+      // Voice samples, call greetings and recordings are private; without a separate bucket they would be public.
+      if (e.B2_KEY_ID) {
+        need(!!e.B2_PRIVATE_BUCKET && e.B2_PRIVATE_BUCKET !== e.B2_BUCKET, 'B2_PRIVATE_BUCKET',
+          'in production when B2 is configured (a private bucket, different from B2_BUCKET)');
+      }
     }
   });
 

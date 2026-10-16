@@ -2,7 +2,7 @@
  * Server-side prices. Every charge reads its base price here (platform_settings, plans, celebrity prices) and applies
  * the caller's plan discount here, so the amount never comes from the client.
  */
-import type { Db, Tx } from '../lib/db.js';
+import type { Db, Queryable, Tx } from '../lib/db.js';
 import { AppError } from '../lib/errors.js';
 import { fromRupees } from '../lib/money.js';
 
@@ -42,11 +42,11 @@ export async function settingPricePaise(q: Db | Tx, key: string): Promise<number
 }
 
 /** The caller's plan discount (0–90 %) from profiles.plan → plans.service_discount_percentage. */
-export async function planDiscountPercent(q: Db | Tx, profileId: string): Promise<number> {
+export async function planDiscountPercent(q: Queryable, profileId: string): Promise<number> {
   const rows = await q<{ pct: string | null }[]>`
     select p.service_discount_percentage::text as pct
-    from public.profiles pr join public.plans p on lower(p.name) = lower(coalesce(pr.plan, 'basic'))
-    where pr.id = ${profileId} and p.is_active = true limit 1`;
+    from public.profiles pr join public.plans p on lower(p.name) = lower(coalesce(pr.plan::text, 'basic'))
+    where pr.id = ${profileId}::uuid and coalesce(p.is_active, true) limit 1`;
   const pct = Number(rows[0]?.pct ?? 0);
   return Number.isFinite(pct) ? Math.min(Math.max(pct, 0), 90) : 0;
 }

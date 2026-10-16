@@ -15,6 +15,11 @@ Everything lives in `/opt/wishme` on the VPS: `docker-compose.yml`, `Caddyfile`,
 6. Check `https://<API_DOMAIN>/api/readyz` returns `{"status":"ready",...}`.
 7. Razorpay dashboard → Webhooks: `https://<API_DOMAIN>/api/v1/webhooks/razorpay`, events `payment.captured`,
    `payment.failed`, `order.paid`, with `RAZORPAY_WEBHOOK_SECRET`.
+8. Vapi dashboard → Server URL: `https://<API_DOMAIN>/functions/v1/vapi-webhook`, with the secret set to
+   `VAPI_WEBHOOK_SECRET` (requests without it are refused). Vobiz needs no dashboard setting: every call carries its
+   own signed callback URLs.
+9. Set `B2_PRIVATE_BUCKET` to a private bucket (startup refuses production without it), and `TBO_END_USER_IP` to the
+   VPS address TBO has whitelisted.
 
 ## Deploy
 

@@ -125,6 +125,25 @@ describe('ledger', () => {
   });
 });
 
+describe('ledger invariant', () => {
+  it('flags a balance changed behind the ledger, but not one moved by a legacy trigger with its own history row', async () => {
+    const other = await signUp(t, 'invariant@example.com');
+    const acct = await profileIdOf(t, other.user.id);
+    await t.deps.ledger.run('user_wallet', { accountId: acct, deltaPaise: 10_000, kind: 'deposit', idempotencyKey: 'test:inv:dep', createdBy: 'test' });
+    const mine = async () => (await t.deps.ledger.verifyInvariants(100_000)).filter((m) => m.accountId === acct);
+    expect(await mine()).toEqual([]);
+
+    // A silent change to the column (no history row): a real fault.
+    await t.sql`update public.profiles set wallet_balance = wallet_balance + 7 where id = ${acct}`;
+    expect(await mine()).toEqual([{ kind: 'user_wallet', accountId: acct, ledgerPaise: 10_000, columnPaise: 10_700 }]);
+
+    // A production trigger path (referral commission): history row plus balance change, outside the ledger.
+    await t.sql`update public.profiles set wallet_balance = 100 where id = ${acct}`;
+    await t.sql`insert into public.wallet_transactions (user_id, transaction_type, amount, status, payment_method) values (${acct}, 'referral_commission', 5, 'completed', 'wallet')`;
+    expect(await mine()).toEqual([]);
+  });
+});
+
 describe('Razorpay deposits and plans', () => {
   it('prices plan orders on the server, ignoring the client amount', async () => {
     stubRazorpay();

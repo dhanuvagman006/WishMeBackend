@@ -205,7 +205,8 @@ export class Ledger {
       transaction_type: historyTypeFor(m.kind, m.deltaPaise),
       amount: rupeesForColumn(m.displayPaise ?? Math.abs(m.deltaPaise), table.columns.get('amount')?.type),
       status: 'completed',
-      payment_method: m.paymentMethod ?? 'wallet',
+      // The production CHECK allows upi, bank_transfer, online, admin, wallet and razorpay: server-made movements show as wallet.
+      payment_method: !m.paymentMethod || m.paymentMethod === 'system' ? 'wallet' : m.paymentMethod,
       description: m.description ?? null,
       transaction_details: { ...(m.details ?? {}), ...(historyTypeFor(m.kind, m.deltaPaise) !== m.kind ? { kind: m.kind } : {}) },
       reference_id: m.reference?.id ?? null,
@@ -233,18 +234,36 @@ export class Ledger {
    * Returns mismatches; the worker alerts on any.
    */
   async verifyInvariants(limit = 1000): Promise<Array<{ kind: string; accountId: string; ledgerPaise: number; columnPaise: number }>> {
-    const rows = await this.db<{ account_kind: AccountKind; account_id: string; balance_after_paise: string }[]>`
-      select distinct on (account_kind, account_id) account_kind, account_id, balance_after_paise::text
+    const rows = await this.db<{ account_kind: AccountKind; account_id: string; balance_after_paise: string; created_at: Date }[]>`
+      select distinct on (account_kind, account_id) account_kind, account_id, balance_after_paise::text, created_at
       from wishme.ledger_entries where balance_after_paise is not null
       order by account_kind, account_id, created_at desc limit ${limit}`;
     const out: Array<{ kind: string; accountId: string; ledgerPaise: number; columnPaise: number }> = [];
     for (const r of rows) {
       const current = await this.balance(r.account_kind, r.account_id).catch(() => NaN);
       // Only flag when nothing moved since: later movements by legacy paths are expected during the transition.
-      if (Number.isFinite(current) && current !== Number(r.balance_after_paise)) {
+      if (Number.isFinite(current) && current !== Number(r.balance_after_paise) && !(await this.movedOutsideLedger(r.account_kind, r.account_id, r.created_at))) {
         out.push({ kind: r.account_kind, accountId: r.account_id, ledgerPaise: Number(r.balance_after_paise), columnPaise: current });
       }
     }
     return out;
+  }
+
+  /**
+   * Whether the account has history rows the ledger did not write since `since`. Production triggers (referral and
+   * booking commissions, wish-order earnings) still move balances directly and record their own history rows, so a
+   * difference after such a row is expected, not a fault.
+   */
+  private async movedOutsideLedger(kind: AccountKind, accountId: string, since: Date): Promise<boolean> {
+    const [table, owner] = kind === 'user_wallet' ? ['wallet_transactions', 'user_id'] : ['celebrity_wallet_transactions', 'celebrity_id'];
+    if (!this.schema.table(table)?.columns.has(owner)) return false;
+    const rows = await this.db.unsafe(
+      `select 1 from public.${table} h
+       where h.${owner} = $1::uuid and h.created_at > $2::timestamptz
+         and not exists (select 1 from wishme.ledger_entries e where e.public_row_id = h.id::text)
+       limit 1`,
+      [accountId, since.toISOString()],
+    );
+    return rows.length > 0;
   }
 }

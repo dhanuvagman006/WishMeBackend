@@ -28,7 +28,7 @@ Every `/rest/v1` table has exactly one policy, every RPC and edge function exact
 | `messaging.ts` | `send-whatsapp-welcome`, `trigger-message-event`, `send-celebrity-subscription-email`, `send-wish-to-celebrity`, `send-wish-thankyou-dm`, `celebrity-conversation-auto-reply`, `celebrity-ai-message`, `generate-occasion-auto-reply` |
 | `content-ai.ts` | `generate-message-suggestions`, `suggest-greeting-card-prompts`, `generate-wish-celebrity-card`, `generate-greeting-card-ai`, `generate-greeting-card`, `generate-photo-wish`, `generate-image-promotion`, `generate-document`, `generate-script`, `heygen-get-languages`, `generate-occasion-video` |
 | `audio.ts` | `generate-lyrics`, `generate-music`, `check-music-status`, `elevenlabs-text-to-speech`, `elevenlabs-speech-to-speech`, `elevenlabs-sound-effects`, `elevenlabs-clone-voice`, `elevenlabs-audio-isolation`, `elevenlabs-image-music-video`, `get-user-voices`, `elevenlabs-get-user-voices`, `b2-get-signed-url` |
-| `voice.ts` | `voice-token`, `sarvam-voice` (WebSocket relay), `ai-call-start`, `ai-call-recording`, `web-search`, `vapi-celebrity-call`, `vapi-get-voices`, `vapi-upload-voice`, `vapi-make-call` |
+| `voice.ts` | `voice-token`, `sarvam-voice` (WebSocket relay), `ai-call-start`, `ai-call-recording`, `web-search`, `vapi-celebrity-call`, `vapi-get-voices`, `vapi-upload-voice`, `vapi-make-call`, `vapi-webhook` (Vapi server events, shared secret), `vobiz-call` (Vobiz answer/hangup/recording callbacks, per-call HMAC), `vobiz-stream` (WebSocket: phone audio to Gemini Live or Sarvam) |
 | `travel.ts` | `tbo-flights`, `tbo-hotels` |
 
 ## Payment purposes (`src/domains/payments/purposes/`)
@@ -43,7 +43,7 @@ Every `/rest/v1` table has exactly one policy, every RPC and edge function exact
 
 | File | Owner |
 | --- | --- |
-| `maintenance.ts`, `payments.ts` | core |
+| `maintenance.ts`, `payments.ts` | core (maintenance also runs the audio `sweep-stale-music` and travel `sweep-stale-flight-bookings` sweeps) |
 | `reminders.ts`, `calls.ts` | voice and hub |
-| `content.ts` | content (HeyGen videos, cards); audio polls its vendors on demand and has no queue |
+| `content.ts` | content (HeyGen videos, cards, stuck-generation refunds) |
 | `notifications.ts` | messaging (email, WhatsApp, Expo push for everyone) |

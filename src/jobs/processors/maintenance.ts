@@ -1,4 +1,6 @@
 /** Housekeeping: expired tokens and codes, old idempotency keys, and the transactional outbox. */
+import { sweepStaleMusic } from '../../domains/audio/music.js';
+import { sweepStaleFlightBookings } from '../../domains/travel/flights.js';
 import { QUEUES } from '../queues.js';
 import type { ProcessorModule } from '../worker-types.js';
 
@@ -44,9 +46,25 @@ export const module: ProcessorModule = {
         return { published: rows.length };
       },
     },
+    {
+      // Songs Suno never delivered: fail the row and refund once (10-minute limit inside).
+      queue: QUEUES.maintenance,
+      name: 'sweep-stale-music',
+      concurrency: 1,
+      handle: async (_job, deps) => ({ swept: await sweepStaleMusic(deps) }),
+    },
+    {
+      // Flight attempts stuck mid-booking: refund when TBO says no, flag for review when the outcome is unknown.
+      queue: QUEUES.maintenance,
+      name: 'sweep-stale-flight-bookings',
+      concurrency: 1,
+      handle: async (_job, deps) => sweepStaleFlightBookings(deps),
+    },
   ],
   repeatables: [
     { queue: QUEUES.maintenance, name: 'purge-expired', cron: '17 3 * * *' },
     { queue: QUEUES.maintenance, name: 'drain-outbox', cron: '* * * * *' },
+    { queue: QUEUES.maintenance, name: 'sweep-stale-music', cron: '*/2 * * * *' },
+    { queue: QUEUES.maintenance, name: 'sweep-stale-flight-bookings', cron: '*/5 * * * *' },
   ],
 };
