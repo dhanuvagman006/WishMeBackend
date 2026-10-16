@@ -15,6 +15,7 @@ import { positiveAmount, toRupeesNumber } from '../../lib/money.js';
 import { safeEqual, uuid } from '../../lib/crypto.js';
 import { parseBody } from '../../compat/functions/registry.js';
 import type { RealtimeHub } from '../../compat/realtime/hub.js';
+import { registerAdmin } from './admin.js';
 
 async function userOf(deps: Deps, req: FastifyRequest): Promise<AuthContext & { userId: string }> {
   const h = req.headers.authorization;
@@ -26,6 +27,8 @@ async function userOf(deps: Deps, req: FastifyRequest): Promise<AuthContext & { 
 }
 
 export function registerV1(app: FastifyInstance, deps: Deps, hub: RealtimeHub | null): void {
+  registerAdmin(app, deps);
+
   // ── operations ─────────────────────────────────────────────────────────────────────────────────────────────
   app.get('/api/healthz', async () => ({ status: 'ok' }));
 
