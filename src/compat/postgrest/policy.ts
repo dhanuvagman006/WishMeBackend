@@ -61,6 +61,10 @@ export interface CustomArgs {
   body: unknown;
   /** True when the client asked for a single object (Accept: application/vnd.pgrst.object+json). */
   single: boolean;
+  /** Client IP (for rate limits on anonymous lookups). */
+  ip: string;
+  /** The full dependency container (ledger, payments, auth, limiter, jobs, …). */
+  deps: import('../../deps.js').Deps;
 }
 
 /**
@@ -96,6 +100,8 @@ export interface RpcContext {
   auth: AuthContext;
   identity: Identity;
   args: Record<string, unknown>;
+  ip: string;
+  deps: import('../../deps.js').Deps;
 }
 
 export interface RpcDefinition {

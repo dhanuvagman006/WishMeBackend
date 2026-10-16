@@ -93,7 +93,7 @@ export function registerPostgrest(app: FastifyInstance, deps: Deps): void {
     const customKey = method === 'GET' || method === 'HEAD' ? 'read' : method === 'POST' ? 'insert' : method === 'PATCH' ? 'update' : 'delete';
     const custom = p.custom?.[customKey];
     if (custom) {
-      const r = await custom({ auth, identity, table: info, params, prefer, body: jsonBody(req.body), single });
+      const r = await custom({ auth, identity, table: info, params, prefer, body: jsonBody(req.body), single, ip: req.ip, deps });
       if (r !== 'default') return sendResult(reply, r);
     }
 
@@ -175,7 +175,7 @@ export function registerPostgrest(app: FastifyInstance, deps: Deps): void {
     if (rpc.access === 'user' && auth.kind === 'anon') throw new AppError(401, '42501', 'permission denied: sign in required');
     const args = jsonBody(req.body) ?? {};
     if (typeof args !== 'object' || Array.isArray(args)) throw pgrstError(400, 'PGRST102', 'RPC arguments must be a JSON object');
-    const r = await rpc.handler({ auth, identity: await auth.identity(), args: args as Record<string, unknown> });
+    const r = await rpc.handler({ auth, identity: await auth.identity(), args: args as Record<string, unknown>, ip: req.ip, deps });
     return sendResult(reply, r);
   });
 }
