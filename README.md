@@ -43,9 +43,9 @@ The schema is the app's tables as modelled in `test/fixtures` plus `migrations/`
 `adb reverse tcp:3000 tcp:3000`. Sign-up OTP codes appear in the server log. Functions whose vendor is not
 configured answer 503.
 
-To show the real celebrity catalogue (names and photos) instead of the fictional demo rows, run
-`./scripts/dev-import-celebrities.sh`: it reads production's public catalogue with the app's anon key (read-only)
-and upserts it locally by id.
+The celebrity catalogue was migrated once into this backend's database (17 celebrities). A local, git-ignored copy
+lives in `backups/dev-celebrities.sql`; `scripts/dev-setup.sh` loads it after a reset when it is present. Nothing in
+development reads from Supabase.
 
 ## Documents
 

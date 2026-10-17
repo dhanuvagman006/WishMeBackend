@@ -34,4 +34,9 @@ SQL
 
 echo "loading scripts/dev-seed.sql (demo plans, celebrities, occasions)"
 psql < scripts/dev-seed.sql
+if [[ -f backups/dev-celebrities.sql ]]; then
+  echo "loading backups/dev-celebrities.sql (the migrated celebrity catalogue)"
+  psql < backups/dev-celebrities.sql
+  psql -c "update public.celebrities set is_active = false where name like 'Demo %'"
+fi
 echo "Local database ready."
