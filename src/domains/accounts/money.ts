@@ -303,13 +303,39 @@ const digitsOf = (s: string | null | undefined) => (s ?? '').replace(/\D/g, '');
 export async function insertPayoutRequest(a: CustomArgs): Promise<CompatResult> {
   const me = caller(a);
   const row = parseRow(PayoutRow, a.body);
-  const { deps } = a;
-  const celebrityId = row.celebrity_id.toLowerCase();
-  if (!a.identity.celebrityIds.includes(celebrityId)) {
+  const payoutId = await requestPayout(a.deps, {
+    ...me,
+    celebrityIds: a.identity.celebrityIds,
+    celebrityId: row.celebrity_id,
+    amount: row.requested_amount,
+    bankAccountNumber: row.bank_account_number,
+  });
+  return represent(a, 'payout_requests', [payoutId]);
+}
+
+/**
+ * Holds `amount` rupees of the celebrity's balance in the ledger and writes the pending payout_requests row, in one
+ * transaction. Shared by the PostgREST insert and the celebrity-payout function. Returns the payout request id.
+ */
+export async function requestPayout(
+  deps: CustomArgs['deps'],
+  p: {
+    userId: string;
+    profileId: string;
+    celebrityIds: string[];
+    celebrityId: string;
+    amount: number | string;
+    bankAccountNumber?: string | null;
+  },
+): Promise<string> {
+  const me = { userId: p.userId, profileId: p.profileId };
+  const celebrityId = p.celebrityId.toLowerCase();
+  if (!p.celebrityIds.includes(celebrityId)) {
     throw forbidden('You can only request payouts for your own celebrity account', '42501');
   }
-  const paise = positiveAmount(row.requested_amount, { maxRupees: MAX_PAYOUT_RUPEES });
-  amountFor(a, 'payout_requests', 'requested_amount', paise); // whole rupees in production, checked before anything moves
+  const paise = positiveAmount(p.amount, { maxRupees: MAX_PAYOUT_RUPEES });
+  const amountType = deps.schema.table('payout_requests')?.columns.get('requested_amount')?.type;
+  rupeesForColumn(paise, amountType); // whole rupees in production, checked before anything moves
 
   // The bank snapshot comes from the caller's own saved account, never from the request.
   // bank_details stores the number in account_number (audit schema); WalletTab posts it as bank_account_number.
@@ -317,7 +343,7 @@ export async function insertPayoutRequest(a: CustomArgs): Promise<CompatResult> 
     await deps.db<{ j: BankRow }[]>`select to_jsonb(b) as j from public.bank_details b where b.user_id = ${me.profileId}`
   ).map((r) => r.j);
   banks.sort((x, y) => Number(!!y.is_default) - Number(!!x.is_default) || String(y.created_at ?? '').localeCompare(String(x.created_at ?? '')));
-  const wanted = digitsOf(row.bank_account_number);
+  const wanted = digitsOf(p.bankAccountNumber);
   const bank = wanted ? banks.find((b) => digitsOf(b.account_number) === wanted) : banks[0];
   if (!bank) {
     throw badRequest(banks.length ? 'Bank account not found. Please add it first.' : 'No bank details found. Please add bank details first.', 'bank_details_missing');
@@ -347,7 +373,7 @@ export async function insertPayoutRequest(a: CustomArgs): Promise<CompatResult> 
         id: payoutId,
         celebrity_id: celebrityId,
         profile_id: me.profileId,
-        requested_amount: amountFor(a, 'payout_requests', 'requested_amount', paise),
+        requested_amount: rupeesForColumn(paise, amountType),
         bank_name: bank.bank_name ?? null,
         bank_account_number: bank.account_number ?? null,
         ifsc_code: bank.ifsc_code ?? null,
@@ -360,5 +386,5 @@ export async function insertPayoutRequest(a: CustomArgs): Promise<CompatResult> 
     if (e instanceof InsufficientFunds) throw new AppError(400, 'insufficient_balance', 'Amount exceeds your available balance', e.details);
     throw e;
   }
-  return represent(a, 'payout_requests', [payoutId]);
+  return payoutId;
 }

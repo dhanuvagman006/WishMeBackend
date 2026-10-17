@@ -127,7 +127,8 @@ create table if not exists public.celebrity_reviews (
   id           uuid primary key default gen_random_uuid(),
   celebrity_id uuid not null references public.celebrities (id) on delete cascade,
   booking_id   uuid not null references public.bookings (id) on delete cascade,
-  user_id      uuid not null,
+  -- The app embeds the reviewer as profiles(first_name,last_name), which needs this key (as in production).
+  user_id      uuid not null references public.profiles (id) on delete cascade,
   rating       int not null check (rating >= 1 and rating <= 5),
   review_text  text,
   created_at   timestamptz not null default now(),

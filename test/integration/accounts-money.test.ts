@@ -268,4 +268,23 @@ describe('bank_details and payout_requests', () => {
     const theirs = await t.app.inject({ method: 'GET', url: `/rest/v1/payout_requests?celebrity_id=eq.${bobCeleb}`, headers: bearer(alice.access_token) });
     expect(theirs.json()).toEqual([]);
   });
+
+  it('celebrity-payout function holds the balance for the caller and refuses non-celebrities', async () => {
+    const payout = (token: string, payload: object) =>
+      t.app.inject({ method: 'POST', url: '/functions/v1/celebrity-payout', headers: bearer(token), payload });
+    const res = await payout(bob.access_token, {
+      amount: 100, bank_name: 'Evil Bank', account_number: '12345678901', ifsc_code: 'EVIL0000001', account_holder_name: 'Mallory',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ success: true, status: 'pending', available_balance: 550 });
+    expect(await celebBalance(bobCeleb)).toBe(550);
+    const [row] = await t.sql`select bank_name, requested_amount::text as amt, status from public.payout_requests where id = ${res.json().payout_id}`;
+    expect(row).toEqual({ bank_name: 'HDFC Bank', amt: '100', status: 'pending' });
+
+    const big = await payout(bob.access_token, { amount: 5000 });
+    expect(big.statusCode).toBe(400);
+    expect(await celebBalance(bobCeleb)).toBe(550);
+    const notCeleb = await payout(alice.access_token, { amount: 10 });
+    expect(notCeleb.statusCode).toBe(403);
+  });
 });

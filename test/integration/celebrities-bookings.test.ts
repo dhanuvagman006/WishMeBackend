@@ -250,6 +250,14 @@ describe('reading and updating bookings', () => {
     expect(dup.statusCode).toBe(409);
     const pub = await t.app.inject({ method: 'GET', url: `/rest/v1/celebrity_reviews?celebrity_id=eq.${celebId}&select=*`, headers: { apikey: 'test-anon-key' } });
     expect(pub.json()[0]).toMatchObject({ rating: 4, user_id: null });
+    // The celebrity page's query: the reviewer's name comes through the profiles embed.
+    const page = await t.app.inject({
+      method: 'GET',
+      url: `/rest/v1/celebrity_reviews?celebrity_id=eq.${celebId}&select=*,profiles(first_name,last_name)&order=created_at.desc&limit=10`,
+      headers: { apikey: 'test-anon-key' },
+    });
+    expect(page.statusCode).toBe(200);
+    expect(page.json()[0]).toMatchObject({ rating: 4 });
   });
 
   it('authorises realtime filters on own ids only', () => {
