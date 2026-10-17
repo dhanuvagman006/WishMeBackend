@@ -39,4 +39,7 @@ if [[ -f backups/dev-celebrities.sql ]]; then
   psql < backups/dev-celebrities.sql
   psql -c "update public.celebrities set is_active = false where name like 'Demo %'"
 fi
+echo "loading scripts/dev-seed-indian-celebrities.sql (public facts only, consent pending, no photos)"
+psql < scripts/dev-seed-indian-celebrities.sql
+psql -c "update public.celebrities set is_active = false where name like 'Demo %'"
 echo "Local database ready."
