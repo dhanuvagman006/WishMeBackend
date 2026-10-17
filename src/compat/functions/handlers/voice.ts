@@ -174,9 +174,9 @@ export const functions = defineFunctions([
       }
       if (engine === 'sarvam' && !(body.want === 'gemini' && live.configured)) return { body: { engine, relay_url: relay, fallback_engine: fallback } };
       if (!live.configured) {
-        // Only reachable when OpenAI is the engine and the app asked for a Gemini token as its fallback.
-        if (canUse('sarvam')) return { body: { engine, relay_url: relay, fallback_engine: fallback } };
-        throw unavailable('Voice assistant is not configured');
+        // Only reachable when OpenAI is the engine and an app still asks for Gemini (e.g. the engine it remembered):
+        // no token, but the answer names OpenAI so the app switches straight away instead of failing.
+        return { body: { engine, relay_url: relay, fallback_engine: fallback } };
       }
       await mintLimit();
       const t = await live.mint({ ttlSec: 30 * 60, startWithinSec: 60 });

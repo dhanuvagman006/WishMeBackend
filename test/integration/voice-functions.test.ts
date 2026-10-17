@@ -140,6 +140,14 @@ describe('voice-token', () => {
     seen = [];
     const gem = await post(alice, 'voice-token', { want: 'gemini', supports: ['openai', 'gemini', 'sarvam'] });
     expect(gem.json()).toMatchObject({ engine: 'openai', token: 'auth_tokens/ephemeral-1' });
+    // With no Gemini key, an app that still asks for Gemini is told to use OpenAI instead of getting an error.
+    const prevGemini = process.env.GEMINI_API_KEY;
+    (t.deps.env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY = undefined;
+    const noGem = await post(alice, 'voice-token', { want: 'gemini', supports: ['openai', 'gemini', 'sarvam'] });
+    expect(noGem.statusCode).toBe(200);
+    expect(noGem.json()).toMatchObject({ engine: 'openai' });
+    expect(noGem.json().token).toBeUndefined();
+    (t.deps.env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY = prevGemini;
     // Builds without OpenAI support are unaffected.
     const old = await post(alice, 'voice-token', { probe: true, supports: ['gemini', 'sarvam'] });
     expect(old.json()).toMatchObject({ engine: 'gemini' });
