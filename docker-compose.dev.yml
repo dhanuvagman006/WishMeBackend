@@ -1,0 +1,38 @@
+# Local development Postgres and Redis with persistent volumes (unlike docker-compose.test.yml, which is throwaway).
+# Small memory caps so it fits on a low-RAM laptop next to Gradle/Metro.
+#   docker compose -f docker-compose.dev.yml up -d --wait
+#   ./scripts/dev-setup.sh        # once: Supabase-like schema + migrations
+#   pnpm dev
+name: wishme-backend-dev
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: wishme
+    ports: ['127.0.0.1:55433:5432']
+    volumes: [pg_data:/var/lib/postgresql/data]
+    command: ['postgres', '-c', 'shared_buffers=64MB', '-c', 'max_connections=40']
+    mem_limit: 256m
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d wishme']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '64mb', '--maxmemory-policy', 'noeviction']
+    ports: ['127.0.0.1:56380:6379']
+    volumes: [redis_data:/data]
+    mem_limit: 96m
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  pg_data:
+  redis_data:

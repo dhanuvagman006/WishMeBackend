@@ -28,6 +28,21 @@ pnpm dev
 
 Tests: `pnpm test` (unit + integration against the test containers). Typecheck: `pnpm typecheck`.
 
+## Running locally with the phone app (standalone, no Supabase)
+
+`docker-compose.dev.yml` is a persistent, memory-capped Postgres (:55433) and Redis (:56380). With a `.env` in
+standalone mode (`DB_MODE=standalone`, `COMPAT_DEFAULT_MODE=local`, `EMAIL_PROVIDER=log`, `DATABASE_URL` and
+`REDIS_URL` pointing at those ports, generated `SUPABASE_ANON_KEY` / `SUPABASE_JWT_SECRET` / `AUTH_PEPPER`):
+
+```bash
+./scripts/dev-local.sh   # containers, schema on first run (scripts/dev-setup.sh), adb reverse, API on :3000
+```
+
+The schema is the app's tables as modelled in `test/fixtures` plus `migrations/`. Build the app with
+`EXPO_PUBLIC_SUPABASE_URL=http://localhost:3000` and the same anon key; it reaches this machine through
+`adb reverse tcp:3000 tcp:3000`. Sign-up OTP codes appear in the server log. Functions whose vendor is not
+configured answer 503.
+
 ## Documents
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): how it fits together, request lifecycle, money, scaling, availability
