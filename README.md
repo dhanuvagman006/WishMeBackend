@@ -43,6 +43,10 @@ The schema is the app's tables as modelled in `test/fixtures` plus `migrations/`
 `adb reverse tcp:3000 tcp:3000`. Sign-up OTP codes appear in the server log. Functions whose vendor is not
 configured answer 503.
 
+To show the real celebrity catalogue (names and photos) instead of the fictional demo rows, run
+`./scripts/dev-import-celebrities.sh`: it reads production's public catalogue with the app's anon key (read-only)
+and upserts it locally by id.
+
 ## Documents
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): how it fits together, request lifecycle, money, scaling, availability
