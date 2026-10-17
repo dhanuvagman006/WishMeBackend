@@ -48,6 +48,7 @@ function stubFetch() {
     }
     seen.push({ url, method, headers, body });
     if (url.endsWith('/v1beta/auth_tokens')) return jsonRes(200, { name: 'auth_tokens/ephemeral-1' });
+    if (url === 'https://api.openai.com/v1/realtime/client_secrets') return jsonRes(200, { value: 'ek_test_1', expires_at: 1_900_000_000, session: {} });
     if (url.includes(':generateContent')) {
       return jsonRes(200, { candidates: [{ content: { parts: [{ text: 'Mumbai gold (24k) is ₹7,950 per gram on 16 October 2026, per IBJA.' }] }, groundingMetadata: { groundingChunks: [{ web: { uri: 'https://ibja.example', title: 'IBJA' } }] } }] });
     }
@@ -68,7 +69,7 @@ const balance = async (profileId: string) => Number((await t.sql`select wallet_b
 beforeAll(async () => {
   t = await bootTest({
     env: {
-      GEMINI_API_KEY: 'test-gemini', SARVAM_API_KEY: 'test-sarvam', VAPI_API_KEY: 'test-vapi', VAPI_PHONE_NUMBER_ID: 'pn-1', VAPI_WEBHOOK_SECRET: 'vapi-secret-123',
+      GEMINI_API_KEY: 'test-gemini', SARVAM_API_KEY: 'test-sarvam', OPENAI_API_KEY: 'test-openai', VAPI_API_KEY: 'test-vapi', VAPI_PHONE_NUMBER_ID: 'pn-1', VAPI_WEBHOOK_SECRET: 'vapi-secret-123',
       VOBIZ_AUTH_ID: 'MA_TEST', VOBIZ_AUTH_TOKEN: 'test-token', VOBIZ_PHONE_NUMBER: '+918000000000', WEB_SEARCH_PROVIDER: 'gemini',
     },
   });
@@ -120,6 +121,28 @@ describe('voice-token', () => {
     expect(old.json()).toMatchObject({ engine: 'gemini', token: 'auth_tokens/ephemeral-1' });
     await t.sql`delete from public.platform_settings where setting_key in ('ai_voice_engine', 'ai_voice_fallback')`;
     await t.deps.kv.del('voice:engine-settings');
+  });
+
+  it('gives OpenAI Realtime to apps that support it, with the classic engine as the fallback', async () => {
+    const probe = await post(alice, 'voice-token', { probe: true, supports: ['openai', 'gemini', 'sarvam'] });
+    expect(probe.json()).toMatchObject({ engine: 'openai', fallback_engine: 'gemini' });
+    expect(seen).toHaveLength(0);
+    const mint = await post(alice, 'voice-token', { supports: ['openai', 'gemini', 'sarvam'] });
+    expect(mint.statusCode).toBe(200);
+    expect(mint.json()).toMatchObject({ engine: 'openai', token: 'ek_test_1', model: 'gpt-realtime-2.1', voice: 'marin', expires_at: 1_900_000_000, fallback_engine: 'gemini' });
+    expect(seen[0]!.url).toBe('https://api.openai.com/v1/realtime/client_secrets');
+    expect(seen[0]!.headers.authorization).toBe('Bearer test-openai');
+    expect(seen[0]!.body).toMatchObject({
+      expires_after: { anchor: 'created_at', seconds: 1800 },
+      session: { type: 'realtime', model: 'gpt-realtime-2.1', audio: { input: { format: { type: 'audio/pcm', rate: 24000 } }, output: { voice: 'marin' } } },
+    });
+    // The fallback engine can still get its own token, and the answer keeps naming OpenAI as the choice.
+    seen = [];
+    const gem = await post(alice, 'voice-token', { want: 'gemini', supports: ['openai', 'gemini', 'sarvam'] });
+    expect(gem.json()).toMatchObject({ engine: 'openai', token: 'auth_tokens/ephemeral-1' });
+    // Builds without OpenAI support are unaffected.
+    const old = await post(alice, 'voice-token', { probe: true, supports: ['gemini', 'sarvam'] });
+    expect(old.json()).toMatchObject({ engine: 'gemini' });
   });
 });
 

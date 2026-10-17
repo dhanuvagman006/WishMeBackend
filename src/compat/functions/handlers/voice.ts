@@ -39,6 +39,7 @@ import { safeEqual } from '../../../lib/crypto.js';
 import { AppError, isAppError, unavailable } from '../../../lib/errors.js';
 import { defineFunctions, parseBody, type FnContext, type FnResult } from '../registry.js';
 import { geminiOf } from '../../../domains/voice/ai-calls.js';
+import { OpenAIRealtime } from '../../../vendors/openai-realtime.js';
 
 const json = (status: number, body: unknown): FnResult => ({ status, body });
 
@@ -68,8 +69,10 @@ async function engineSettings(deps: Deps): Promise<{ wanted: 'gemini' | 'sarvam'
 }
 
 const voiceTokenBody = z
-  .object({ probe: z.boolean().optional(), want: z.enum(['gemini', 'sarvam']).optional(), supports: z.array(z.string().max(20)).max(5).optional() })
+  .object({ probe: z.boolean().optional(), want: z.enum(['gemini', 'sarvam', 'openai']).optional(), supports: z.array(z.string().max(20)).max(5).optional() })
   .passthrough();
+
+export const openaiRealtimeOf = (deps: Deps): OpenAIRealtime => deps.memo('openai-realtime', () => new OpenAIRealtime(deps.env, deps.log));
 
 const aiCallBody = z.object({
   name: z.string().max(120).nullish(),
@@ -149,17 +152,33 @@ export const functions = defineFunctions([
       const supports = body.supports ?? ['gemini'];
       const live = geminiLiveOf(c.deps);
       const sarvam = sarvamOf(c.deps);
+      const openai = openaiRealtimeOf(c.deps);
       const { wanted, fallbackOn } = await engineSettings(c.deps);
       const canUse = (e: 'gemini' | 'sarvam') => supports.includes(e) && (e === 'sarvam' ? sarvam.configured : live.configured);
-      const engine = canUse(wanted) ? wanted : canUse('gemini') ? 'gemini' : canUse('sarvam') ? 'sarvam' : null;
+      // OpenAI Realtime is the voice when its key is set and the app knows how to use it (older builds don't list it).
+      const useOpenAI = supports.includes('openai') && openai.configured;
+      const classic = canUse(wanted) ? wanted : canUse('gemini') ? 'gemini' : canUse('sarvam') ? 'sarvam' : null;
+      const engine = useOpenAI ? 'openai' : classic;
       if (!engine) throw unavailable('Voice assistant is not configured');
-      const other = engine === 'sarvam' ? 'gemini' : 'sarvam';
-      const fallback = fallbackOn && canUse(other) ? other : null;
+      const otherClassic = engine === 'sarvam' ? 'gemini' : 'sarvam';
+      const fallback = !fallbackOn ? null : engine === 'openai' ? classic : canUse(otherClassic) ? otherClassic : null;
       const relay = relayUrl(c.deps);
       if (body.probe === true) return { body: { engine, fallback_engine: fallback, relay_url: relay } };
+      const mintLimit = () =>
+        // Every reconnect mints a token: generous, but bounded (each token can open a paid live session).
+        c.deps.limiter.hit('voice-token-mint', `u:${c.auth.userId}`, { limit: 40, windowSec: 600 }, 'Too many voice sessions. Please wait a little.');
+      if (engine === 'openai' && body.want !== 'gemini' && body.want !== 'sarvam') {
+        await mintLimit();
+        const s = await openai.mint({ ttlSec: 30 * 60 });
+        return { body: { engine, token: s.token, model: s.model, voice: s.voice, expires_at: s.expiresAt, fallback_engine: fallback, relay_url: relay } };
+      }
       if (engine === 'sarvam' && !(body.want === 'gemini' && live.configured)) return { body: { engine, relay_url: relay, fallback_engine: fallback } };
-      // Every reconnect mints a token: generous, but bounded (each token can open a paid Live session).
-      await c.deps.limiter.hit('voice-token-mint', `u:${c.auth.userId}`, { limit: 40, windowSec: 600 }, 'Too many voice sessions. Please wait a little.');
+      if (!live.configured) {
+        // Only reachable when OpenAI is the engine and the app asked for a Gemini token as its fallback.
+        if (canUse('sarvam')) return { body: { engine, relay_url: relay, fallback_engine: fallback } };
+        throw unavailable('Voice assistant is not configured');
+      }
+      await mintLimit();
       const t = await live.mint({ ttlSec: 30 * 60, startWithinSec: 60 });
       return { body: { engine, token: t.token, model: t.model, fallback_engine: fallback, relay_url: relay } };
     },

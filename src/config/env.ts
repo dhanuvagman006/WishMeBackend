@@ -124,6 +124,11 @@ const schema = z
     GEMINI_TEXT_MODEL: z.string().default('gemini-2.5-flash'),
     GEMINI_IMAGE_MODEL: z.string().default('gemini-2.5-flash-image'),
     SARVAM_API_KEY: z.string().optional(),
+    /** OpenAI Realtime voice for the in-app assistant. When set, apps that support it are given OpenAI first. */
+    OPENAI_API_KEY: z.string().optional(),
+    OPENAI_REALTIME_MODEL: z.string().default('gpt-realtime-2.1'),
+    /** alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin or cedar (marin and cedar sound best). */
+    OPENAI_REALTIME_VOICE: z.string().default('marin'),
     ELEVENLABS_API_KEY: z.string().optional(),
     VAPI_API_KEY: z.string().optional(),
     VAPI_PHONE_NUMBER_ID: z.string().optional(),
