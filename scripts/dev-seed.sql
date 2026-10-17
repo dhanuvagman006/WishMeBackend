@@ -27,3 +27,8 @@ values ('Diwali', 'Festival of lights', make_date(extract(year from now())::int,
 -- Subscription pricing: the app's celebrity list inner-joins enabled pricing, so a celebrity without it is hidden.
 insert into public.celebrity_favorite_pricing (celebrity_id, price, is_enabled)
 select id, 999, true from public.celebrities where name like 'Demo %';
+
+-- Stock portraits (Unsplash, already used by production's demo rows) so cards and pages have photos.
+update public.celebrities set image_url = 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&h=800&fit=crop&q=80' where name = 'Demo Singer Asha';
+update public.celebrities set image_url = 'https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=800&h=800&fit=crop&q=80' where name = 'Demo Actor Ravi';
+update public.celebrities set image_url = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&h=800&fit=crop&q=80' where name = 'Demo Comic Meera';
